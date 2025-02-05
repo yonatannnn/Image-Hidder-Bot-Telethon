@@ -29,6 +29,9 @@ bot = TelegramClient("photo_hide_bot", API_ID, API_HASH).start(bot_token=BOT_TOK
 @bot.on(events.NewMessage(pattern="/start"))
 async def start_command(event):
     """Sends a welcome message when a user starts the bot."""
+    if event.out:
+        return  # Ignore messages sent by the bot
+
     welcome_text = (
         "**👋 Welcome to Photo Hider Bot!**\n\n"
         "🔹 Send a **photo**, and it will be **securely stored**.\n"
@@ -37,14 +40,12 @@ async def start_command(event):
         "📌 Type `/help` for more commands."
     )
 
-    # Help buttons
     buttons = [
         [Button.inline("📖 Help", data="help")],
         [Button.inline("🔍 Retrieve Photo", data="retrieve")]
     ]
 
     await event.respond(welcome_text, buttons=buttons)
-
 
 # ---- HELP COMMAND ----
 @bot.on(events.NewMessage(pattern="/help"))
@@ -67,9 +68,9 @@ async def help_command(event):
 
 
 # ---- PHOTO HANDLER ----
-@bot.on(events.NewMessage(func=lambda e: e.photo))
+@bot.on(events.NewMessage(func=lambda e: e.photo and not e.out))
 async def receive_photo(event):
-    """Handles photo uploads and stores them securely, then deletes local copy & message."""
+    """Handles photo uploads and stores them securely."""
     user_id = event.sender_id
     photo = await event.download_media()  # Save photo locally
 
@@ -97,12 +98,10 @@ async def receive_photo(event):
         [Button.text("🔍 Retrieve Photo", resize=True)]
     ]
 
-    await bot.send_message(
-        user_id,
+    await event.respond(
         f"✅ Your photo is securely stored!\nUse this key to retrieve it: `{access_key}`\n\n📌 Type `/help` for more commands.",
         buttons=buttons
     )
-
 
 # ---- RETRIEVE PHOTO ----
 @bot.on(events.NewMessage(pattern="/get (.+)"))
