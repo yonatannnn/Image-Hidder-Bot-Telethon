@@ -26,12 +26,9 @@ bot = TelegramClient("photo_hide_bot", API_ID, API_HASH).start(bot_token=BOT_TOK
 
 
 # ---- START COMMAND ----
-@bot.on(events.NewMessage(pattern="/start"))
+@bot.on(events.NewMessage(pattern="/start", incoming=True))
 async def start_command(event):
     """Sends a welcome message when a user starts the bot."""
-    if event.out:
-        return  # Ignore messages sent by the bot
-
     welcome_text = (
         "**👋 Welcome to Photo Hider Bot!**\n\n"
         "🔹 Send a **photo**, and it will be **securely stored**.\n"
@@ -47,8 +44,9 @@ async def start_command(event):
 
     await event.respond(welcome_text, buttons=buttons)
 
+
 # ---- HELP COMMAND ----
-@bot.on(events.NewMessage(pattern="/help"))
+@bot.on(events.NewMessage(pattern="/help", incoming=True))
 async def help_command(event):
     """Shows how to use the bot with button options."""
     help_text = (
@@ -68,9 +66,12 @@ async def help_command(event):
 
 
 # ---- PHOTO HANDLER ----
-@bot.on(events.NewMessage(func=lambda e: e.photo and not e.out))
+@bot.on(events.NewMessage(incoming=True))
 async def receive_photo(event):
     """Handles photo uploads and stores them securely."""
+    if not event.photo:
+        return  # Ignore non-photo messages
+
     user_id = event.sender_id
     photo = await event.download_media()  # Save photo locally
 
@@ -94,8 +95,8 @@ async def receive_photo(event):
 
     # Send confirmation message with buttons
     buttons = [
-        [Button.text("📖 Help", resize=True)],
-        [Button.text("🔍 Retrieve Photo", resize=True)]
+        [Button.inline("🔍 Retrieve Photo", data="retrieve")],
+        [Button.inline("📖 Help", data="help")]
     ]
 
     await event.respond(
@@ -103,8 +104,9 @@ async def receive_photo(event):
         buttons=buttons
     )
 
+
 # ---- RETRIEVE PHOTO ----
-@bot.on(events.NewMessage(pattern="/get (.+)"))
+@bot.on(events.NewMessage(pattern=r"/get (.+)", incoming=True))
 async def retrieve_photo(event):
     """Retrieves and decrypts a stored photo."""
     access_key = event.pattern_match.group(1)
@@ -125,24 +127,49 @@ async def retrieve_photo(event):
 
         # Send menu buttons after retrieving the image
         buttons = [
-            [Button.text("🔍 Retrieve Another Photo", resize=True)],
-            [Button.text("📖 Help", resize=True)]
+            [Button.inline("🔍 Retrieve Another Photo", data="retrieve")],
+            [Button.inline("📖 Help", data="help")]
         ]
         await event.respond("ℹ️ Need more help? Click below:", buttons=buttons)
 
     else:
         await event.reply("❌ Invalid key! No photo found.")
 
+
+# ---- CALLBACK HANDLER FOR BUTTONS ----
 @bot.on(events.CallbackQuery)
 async def callback_handler(event):
     """Handles button clicks."""
     data = event.data.decode("utf-8")
+
     if data == "help":
-        await help_command(event)
+        await event.edit(
+            "**🛠 Photo Hider Bot - Help Guide**\n\n"
+            "🔹 **Hide a Photo**: Send any photo to the bot, and it will be stored securely.\n"
+            "🔹 **Retrieve a Photo**: Use `/get <your_access_key>` to get your hidden photo.\n"
+            "🔹 **Security**: Photos are encrypted and only retrievable using your key.\n"
+            "🔹 **Privacy**: Photos are deleted from the bot's storage after saving.\n",
+            buttons=[
+                [Button.inline("🔍 Retrieve Photo", data="retrieve")],
+                [Button.inline("🏠 Home", data="home")]
+            ]
+        )
+
     elif data == "retrieve":
-        await event.respond("📌 To retrieve a photo, use `/get <your_access_key>`.")
+        await event.edit("📌 To retrieve a photo, use `/get <your_access_key>`.")
+
     elif data == "home":
-        await start_command(event)
+        await event.edit(
+            "**👋 Welcome to Photo Hider Bot!**\n\n"
+            "🔹 Send a **photo**, and it will be **securely stored**.\n"
+            "🔹 Retrieve it anytime using your unique **access key**.\n"
+            "🔹 Your photos are **encrypted and private**.\n\n"
+            "📌 Type `/help` for more commands.",
+            buttons=[
+                [Button.inline("📖 Help", data="help")],
+                [Button.inline("🔍 Retrieve Photo", data="retrieve")]
+            ]
+        )
 
 
 # ---- START THE BOT ----
