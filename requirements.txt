@@ -1,0 +1,4 @@
+telethon
+pymongo
+python-dotenv
+cryptography
