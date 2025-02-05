@@ -1,4 +1,4 @@
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, Button
 from pymongo import MongoClient
 import os
 from cryptography.fernet import Fernet
@@ -25,10 +25,31 @@ collection = db["hidden_photos"]
 bot = TelegramClient("photo_hide_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 
+# ---- START COMMAND ----
+@bot.on(events.NewMessage(pattern="/start"))
+async def start_command(event):
+    """Sends a welcome message when a user starts the bot."""
+    welcome_text = (
+        "**👋 Welcome to Photo Hider Bot!**\n\n"
+        "🔹 Send a **photo**, and it will be **securely stored**.\n"
+        "🔹 Retrieve it anytime using your unique **access key**.\n"
+        "🔹 Your photos are **encrypted and private**.\n\n"
+        "📌 Type `/help` for more commands."
+    )
+
+    # Help buttons
+    buttons = [
+        [Button.text("📖 Help", resize=True)],
+        [Button.text("🔍 Retrieve Photo", resize=True)]
+    ]
+
+    await event.respond(welcome_text, buttons=buttons)
+
+
 # ---- HELP COMMAND ----
 @bot.on(events.NewMessage(pattern="/help"))
 async def help_command(event):
-    """Shows how to use the bot."""
+    """Shows how to use the bot with button options."""
     help_text = (
         "**🛠 Photo Hider Bot - Help Guide**\n\n"
         "🔹 **Hide a Photo**: Send any photo to the bot, and it will be stored securely.\n"
@@ -36,7 +57,13 @@ async def help_command(event):
         "🔹 **Security**: Photos are encrypted and only retrievable using your key.\n"
         "🔹 **Privacy**: Photos are deleted from the bot's storage after saving.\n"
     )
-    await event.reply(help_text)
+
+    buttons = [
+        [Button.text("🔍 Retrieve Photo", resize=True)],
+        [Button.text("🏠 Home", resize=True)]
+    ]
+
+    await event.respond(help_text, buttons=buttons)
 
 
 # ---- PHOTO HANDLER ----
@@ -64,9 +91,17 @@ async def receive_photo(event):
     # ✅ Auto-delete message from Telegram
     await event.delete()
 
-    # Send confirmation message
-    await bot.send_message(user_id,
-                           f"✅ Your photo is securely stored!\nUse this key to retrieve it: `{access_key}`\n\n📌 Type `/help` for more commands.")
+    # Send confirmation message with buttons
+    buttons = [
+        [Button.text("📖 Help", resize=True)],
+        [Button.text("🔍 Retrieve Photo", resize=True)]
+    ]
+
+    await bot.send_message(
+        user_id,
+        f"✅ Your photo is securely stored!\nUse this key to retrieve it: `{access_key}`\n\n📌 Type `/help` for more commands.",
+        buttons=buttons
+    )
 
 
 # ---- RETRIEVE PHOTO ----
@@ -88,6 +123,14 @@ async def retrieve_photo(event):
 
         # Delete the locally saved retrieved photo
         os.remove(file_path)
+
+        # Send menu buttons after retrieving the image
+        buttons = [
+            [Button.text("🔍 Retrieve Another Photo", resize=True)],
+            [Button.text("📖 Help", resize=True)]
+        ]
+        await event.respond("ℹ️ Need more help? Click below:", buttons=buttons)
+
     else:
         await event.reply("❌ Invalid key! No photo found.")
 
