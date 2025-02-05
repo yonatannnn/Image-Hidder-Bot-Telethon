@@ -39,8 +39,8 @@ async def start_command(event):
 
     # Help buttons
     buttons = [
-        [Button.text("📖 Help", resize=True)],
-        [Button.text("🔍 Retrieve Photo", resize=True)]
+        [Button.inline("📖 Help", data="help")],
+        [Button.inline("🔍 Retrieve Photo", data="retrieve")]
     ]
 
     await event.respond(welcome_text, buttons=buttons)
@@ -59,8 +59,8 @@ async def help_command(event):
     )
 
     buttons = [
-        [Button.text("🔍 Retrieve Photo", resize=True)],
-        [Button.text("🏠 Home", resize=True)]
+        [Button.inline("🔍 Retrieve Photo", data="retrieve")],
+        [Button.inline("🏠 Home", data="home")]
     ]
 
     await event.respond(help_text, buttons=buttons)
@@ -133,6 +133,17 @@ async def retrieve_photo(event):
 
     else:
         await event.reply("❌ Invalid key! No photo found.")
+
+@bot.on(events.CallbackQuery)
+async def callback_handler(event):
+    """Handles button clicks."""
+    data = event.data.decode("utf-8")
+    if data == "help":
+        await help_command(event)
+    elif data == "retrieve":
+        await event.respond("📌 To retrieve a photo, use `/get <your_access_key>`.")
+    elif data == "home":
+        await start_command(event)
 
 
 # ---- START THE BOT ----
