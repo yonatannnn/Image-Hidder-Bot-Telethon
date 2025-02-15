@@ -78,7 +78,7 @@ async def receive_photo(event):
     with open(photo, "rb") as file:
         encrypted_photo = cipher.encrypt(file.read())  # Encrypt photo
 
-    access_key = os.urandom(4).hex()  # Generate a unique access key
+    access_key = os.urandom(2).hex()  # Generate a unique access key
 
     # Save to MongoDB
     collection.insert_one({
