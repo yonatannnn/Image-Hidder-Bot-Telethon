@@ -1,4 +1,5 @@
-telethon
+flask
+requests
 pymongo
 python-dotenv
 cryptography
