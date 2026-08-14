@@ -1,10 +1,15 @@
 import os
 import json
+import logging
 import requests
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +29,12 @@ if not ENCRYPTION_KEY:
 cipher = Fernet(ENCRYPTION_KEY.encode())
 
 # Database Connection
-client = MongoClient(MONGO_URI)
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=10000,
+)
 db = client["photo_hide_db"]
 collection = db["hidden_photos"]
 
@@ -71,6 +81,17 @@ def answer_callback(callback_id):
 
 def delete_message(chat_id, message_id):
     return tg_post("deleteMessage", data={"chat_id": chat_id, "message_id": message_id})
+
+
+def report_failure(chat_id, status_message_id, text):
+    """Tell the user it failed, reusing the status message so it never dangles."""
+    try:
+        if status_message_id:
+            edit_message(chat_id, status_message_id, text)
+        else:
+            send_message(chat_id, text)
+    except Exception:
+        logger.exception("Failed to deliver error message to chat %s", chat_id)
 
 
 def get_file_bytes(file_id):
@@ -126,16 +147,34 @@ def handle_photo(message):
     status_resp = send_message(chat_id, "hidding image ...")
     status_message_id = status_resp.get("result", {}).get("message_id")
 
-    file_id = photos[-1]["file_id"]
-    photo_bytes = get_file_bytes(file_id)
-    encrypted_photo = cipher.encrypt(photo_bytes)
-    access_key = os.urandom(4).hex()
+    try:
+        file_id = photos[-1]["file_id"]
+        photo_bytes = get_file_bytes(file_id)
+        encrypted_photo = cipher.encrypt(photo_bytes)
+        access_key = os.urandom(4).hex()
 
-    collection.insert_one({
-        "user_id": user_id,
-        "photo_data": encrypted_photo,
-        "access_key": access_key,
-    })
+        collection.insert_one({
+            "user_id": user_id,
+            "photo_data": encrypted_photo,
+            "access_key": access_key,
+        })
+    except PyMongoError:
+        logger.exception("Storage unreachable while hiding photo for user %s", user_id)
+        report_failure(
+            chat_id,
+            status_message_id,
+            "⚠️ Storage is unreachable right now, so your photo was <b>not</b> saved.\n"
+            "Nothing was deleted. Please try again in a few minutes.",
+        )
+        return
+    except Exception:
+        logger.exception("Unexpected failure hiding photo for user %s", user_id)
+        report_failure(
+            chat_id,
+            status_message_id,
+            "⚠️ Something went wrong, so your photo was <b>not</b> saved.",
+        )
+        return
 
     delete_message(chat_id, message_id)
 
@@ -154,7 +193,16 @@ def handle_photo(message):
 
 
 def handle_get(chat_id, access_key):
-    record = collection.find_one({"access_key": access_key})
+    try:
+        record = collection.find_one({"access_key": access_key})
+    except PyMongoError:
+        logger.exception("Storage unreachable while retrieving an access key")
+        send_message(
+            chat_id,
+            "⚠️ Storage is unreachable right now. Please try again in a few minutes.",
+        )
+        return
+
     if not record:
         send_message(chat_id, "❌ Invalid key! No photo found.")
         return
@@ -162,11 +210,21 @@ def handle_get(chat_id, access_key):
     status_resp = send_message(chat_id, "retreiving image ...")
     status_message_id = status_resp.get("result", {}).get("message_id")
 
-    decrypted_photo = cipher.decrypt(record["photo_data"])
+    try:
+        decrypted_photo = cipher.decrypt(record["photo_data"])
 
-    files = {"photo": ("retrieved.jpg", decrypted_photo)}
-    data = {"chat_id": chat_id, "caption": "📸 Here is your hidden photo:"}
-    tg_post("sendPhoto", data=data, files=files)
+        files = {"photo": ("retrieved.jpg", decrypted_photo)}
+        data = {"chat_id": chat_id, "caption": "📸 Here is your hidden photo:"}
+        tg_post("sendPhoto", data=data, files=files)
+    except Exception:
+        logger.exception("Failed to deliver hidden photo to chat %s", chat_id)
+        report_failure(
+            chat_id,
+            status_message_id,
+            "⚠️ Couldn't retrieve your photo. Please try again shortly.",
+        )
+        return
+
     if status_message_id:
         delete_message(chat_id, status_message_id)
 
@@ -224,8 +282,16 @@ def handle_callback(callback):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = request.get_json(silent=True) or {}
+    # Telegram redelivers any update we do not acknowledge with a 2xx, so a
+    # failure here must still ack or a single bad update loops indefinitely.
+    try:
+        return _dispatch(request.get_json(silent=True) or {})
+    except Exception:
+        logger.exception("Unhandled error processing update")
+        return jsonify({"ok": True})
 
+
+def _dispatch(update):
     if "callback_query" in update:
         handle_callback(update["callback_query"])
         return jsonify({"ok": True})
