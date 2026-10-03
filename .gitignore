@@ -1,4 +1,48 @@
-.vercel
+# Environment
 .env
+.env.*
+
+# Telethon / Telegram session files
+*.session
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs, DB, coverage
+*.log
+*.sqlite3
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Private keys / secrets
+*.pem
+*.key
+secrets.json
+
+# Project
+.vercel
 exported_images/
