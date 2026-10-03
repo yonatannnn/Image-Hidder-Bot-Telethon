@@ -1,3 +1,4 @@
 .vercel
 .env
 __pycache__/
+exported_images/
